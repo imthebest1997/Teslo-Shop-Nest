@@ -50,7 +50,7 @@ export class Product {
     })
     tags: string[];
 
-    // images
+
     @OneToMany(
         () => ProductImage,
         (productImage) => productImage.product,
@@ -59,7 +59,7 @@ export class Product {
             eager: true,
         }
     )
-    images?: ProductImage;
+    images?: ProductImage[];
 
 
     @BeforeInsert()
