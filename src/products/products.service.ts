@@ -3,7 +3,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Product } from './entities/product.entity';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { PaginationDto } from 'src/common/dtos/pagination.dto';
 import {validate as isUUID} from "uuid";
 import { ProductImage } from './entities';
@@ -19,6 +19,8 @@ export class ProductsService {
 
     @InjectRepository(ProductImage)
     private readonly productImageRepository: Repository<ProductImage>,
+
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(createProductDto: CreateProductDto) {
@@ -94,21 +96,40 @@ export class ProductsService {
 
   async update(id: string, updateProductDto: UpdateProductDto) {
         
-    const product = await this.productRepository.preload({
-      id: id,
-      ...updateProductDto,
-      images: updateProductDto.images ? updateProductDto.images.map(url => ({ url })) : null,
-    });
+    const { images, ...toUpdate } = updateProductDto;
+
+    const product = await this.productRepository.preload({ id, ...toUpdate });
 
     if(!product)
       throw new NotFoundException(`Product not found with id: ${id}`);
 
+    // Create query runner to handle transaction
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    // Establish real database connection using our new query runner
+    await queryRunner.connect();
+
+    // Execute the transaction
+    await queryRunner.startTransaction();
+
     try {
-      await this.productRepository.save(product);      
-      return product;
+      if( images ){
+        // Delete all images and add new ones
+        await queryRunner.manager.delete(ProductImage, { product: {id} });
+        product.images = images.map( image => this.productImageRepository.create({ url: image }));
+      }
+      
+      // Save product
+      await queryRunner.manager.save(product);
+      await queryRunner.commitTransaction();
+
+      return this.findOnePlain(id);
 
     } catch (error) {
+      await queryRunner.rollbackTransaction();      
       this.handleDBExceptions(error);      
+    } finally {
+      await queryRunner.release();
     }
 
   }
@@ -125,4 +146,19 @@ export class ProductsService {
     this.logger.error(error);
     throw new InternalServerErrorException('Unexpected error creating product');
   }
+
+  //! Don't execute this method in production 
+  async deleteAllProducts(){
+    const query = this.productRepository.createQueryBuilder('product');
+    try {
+      return await query
+        .delete()
+        .where({})
+        .execute();
+    } catch (error) {
+      this.handleDBExceptions(error);      
+    }
+  }
+
+
 }
