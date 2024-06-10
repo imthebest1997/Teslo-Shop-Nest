@@ -9,6 +9,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { CommonModule } from './common/common.module';
 import { ProductsModule } from './products/products.module';
 import { SeedModule } from './seed/seed.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -36,6 +37,8 @@ import { SeedModule } from './seed/seed.module';
     SeedModule,
 
     FilesModule,
+
+    AuthModule,
   ],
 })
 
